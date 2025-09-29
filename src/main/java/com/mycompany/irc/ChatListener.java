@@ -29,7 +29,7 @@ public class ChatListener extends ListenerAdapter{
     private static String DYNAMODB_TABLE_NAME = "ChatHistory";
     private final IrcDao ircDao;
     private final String password;
-    private final String email = "raonysps@gmail.com"; // Use a real email!
+    private final String email = "raonysps@gmail.com";
 
     public ChatListener(DynamoDbClient ddbClient, IrcDao ircDao, String password) {
         this.ddbClient = ddbClient;
@@ -42,7 +42,9 @@ public class ChatListener extends ListenerAdapter{
         // This event fires as soon as the bot connects to the server
         if (!password.isEmpty()) {
             System.out.println("Attempting to identify with NickServ...");
-            event.getBot().sendIRC().message("NickServ", "IDENTIFY " + password);
+            if((event.getBot().sendIRC().message("NickServ", "IDENTIFY " + password)) == false){
+                system.out.println(x: "Falha na conexão com o bot");
+            }
         } else {
             System.out.println("No password provided. Assuming unregistered user.");
         }

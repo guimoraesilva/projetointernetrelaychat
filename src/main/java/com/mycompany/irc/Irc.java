@@ -34,7 +34,7 @@ public class Irc extends javax.swing.JFrame {
     private static final String IRC_SERVER = "irc.libera.chat";
     private static final int IRC_TLS_PORT = 6697;
     private static String NICKNAME = "nickname";
-    private static String CHANNEL_TO_JOIN = "#stockmarkets"; // Change this!
+    private static String CHANNEL_TO_JOIN = "#nossocanal"; // Canal a ser conectado
     private static final String AWS_REGION = "us-east-1";
     private static final String DYNAMODB_TABLE_NAME = "ChatHistory";
     private static String PASSWORD;
