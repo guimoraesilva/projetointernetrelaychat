@@ -26,10 +26,6 @@ import org.pircbotx.hooks.events.ServerResponseEvent;
 import org.pircbotx.hooks.events.PrivateMessageEvent;
 import org.pircbotx.hooks.events.PartEvent;
 
-/**
- *
- * @author Raony
- */
 public class ChatListener extends ListenerAdapter {
 
     private final String nickname;
@@ -52,16 +48,16 @@ public class ChatListener extends ListenerAdapter {
 
     @Override
     public void onConnect(ConnectEvent event) {
-        // This event fires as soon as the bot connects to the server
+        
         Irc.isBotReady = true;
         Irc.bot.sendIRC().listChannels();
     }
 
     @Override
     public void onJoin(JoinEvent event) throws Exception {
-        // We only care when the BOT itself joins (not other users)
+        
         if (event.getUser().getNick().equals(event.getBot().getNick())) {
-            // Update the tracking variable with the current channel name
+            
             this.lastChannelJoined = event.getChannel().getName(); 
         }
         Irc.canalativo = this.lastChannelJoined;
@@ -71,7 +67,6 @@ public class ChatListener extends ListenerAdapter {
         chatArea.append("\nNow logged in channel " + this.lastChannelJoined + "\n\n");
     }
 
-    // 3. New method to retrieve the value
     public String getLastChannelJoined() {
         return this.lastChannelJoined;
     }
@@ -86,20 +81,11 @@ public class ChatListener extends ListenerAdapter {
         }
         String noticeMessage = event.getMessage();
         System.out.println(String.format("--- NOTICE from %s: %s ---", sender, noticeMessage));
-        //if (noticeMessage.contains("Channel")) {
-        // The message structure is often "Channel: #channelname topics"
-        // You may need to refine this parsing depending on the server
-        // Use SwingUtilities.invokeLater to update the GUI
-        //SwingUtilities.invokeLater(() -> {
-        //    chatArea.append("\nChannel: " + noticeMessage);
-        //});
-        //}
-        // Listen for NickServ's failure notices
         if (sender.equalsIgnoreCase("NickServ") && noticeMessage.contains("not a registered nickname")) {
             System.out.println("Nickname not registered. Registering with NickServ now...");
             Irc.nextCommand = Irc.MODE_WAITING_FOR_EMAIL;
 
-            // 2. Prompt the user on the JTextArea (on the EDT)
+        
             SwingUtilities.invokeLater(() -> {
                 chatArea.append("\n[NickServ] Your nickname is not registered. \n");
                 chatArea.append("[NickServ] Please type your email address in the command box to register.\n");
@@ -118,20 +104,13 @@ public class ChatListener extends ListenerAdapter {
     public void onServerResponse(ServerResponseEvent event) {
         if (event.getCode() == 322) {
             String rawMessage = event.getRawLine();
-            // The raw message will be something like:
-            // ":server.name 322 YourNick #channel users :Topic"
-            // Split the raw line by spaces to isolate the channel name and topic
-            String[] parts = rawMessage.split(" ", 6); // Split into 6 parts
+            String[] parts = rawMessage.split(" ", 6); 
 
-            // Basic parsing (indices may need adjustment based on exact server output):
-            // parts[3] should be the channel name (e.g., "#channel")
-            // parts[4] should be the user count (e.g., "1")
-            // parts[5] should contain the topic (after the colon)
             if (parts.length >= 6) {
                 String userOnline = parts[2];
                 String channelName = parts[3];
                 String userCount = parts[4];
-                // Remove the leading colon from the topic text
+                
                 String topic = parts[5].startsWith(":") ? parts[5].substring(1) : parts[5];
 
                 String formattedEntry = String.format("Canal: %s (%s usuarios) - Topico: %s",
