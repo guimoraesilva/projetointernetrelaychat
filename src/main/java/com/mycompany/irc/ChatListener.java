@@ -12,89 +12,178 @@ import org.pircbotx.hooks.events.JoinEvent; // Add this import
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
-
+import javax.swing.SwingUtilities;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import org.pircbotx.hooks.events.UnknownEvent;
+import org.pircbotx.hooks.events.DisconnectEvent;
+import org.pircbotx.hooks.events.ServerResponseEvent;
+import org.pircbotx.hooks.events.PrivateMessageEvent;
+import org.pircbotx.hooks.events.PartEvent;
 
 /**
  *
  * @author Raony
  */
-public class ChatListener extends ListenerAdapter{
-    
-    private final DynamoDbClient ddbClient;
-    private static String DYNAMODB_TABLE_NAME = "ChatHistory";
-    private final IrcDao ircDao;
-    private final String password;
-    private final String email = "raonysps@gmail.com";
+public class ChatListener extends ListenerAdapter {
 
-    public ChatListener(DynamoDbClient ddbClient, IrcDao ircDao, String password) {
-        this.ddbClient = ddbClient;
-        this.ircDao = ircDao;
-        this.password = password;
+    private final String nickname;
+    private final JTextArea chatArea;
+    private final JTextField txtCommand;
+    private final JTextArea channelsArea;
+    private String lastChannelJoined = null;
+
+    public ChatListener(String nickname, JTextArea chatArea, JTextField command_line, JTextArea channelsArea) {
+        this.nickname = nickname;
+        this.chatArea = chatArea;
+        this.channelsArea = channelsArea;
+        this.txtCommand = command_line;
+    }
+
+    @Override
+    public void onUnknown(UnknownEvent event) throws Exception {
+        System.out.println("RAW INCOMING: " + event.getLine());
     }
 
     @Override
     public void onConnect(ConnectEvent event) {
         // This event fires as soon as the bot connects to the server
-        if (!password.isEmpty()) {
-            System.out.println("Attempting to identify with NickServ...");
-            if((event.getBot().sendIRC().message("NickServ", "IDENTIFY " + password)) == false){
-                system.out.println(x: "Falha na conexão com o bot");
-            }
-        } else {
-            System.out.println("No password provided. Assuming unregistered user.");
-        }
+        Irc.isBotReady = true;
+        Irc.bot.sendIRC().listChannels();
     }
 
     @Override
+    public void onJoin(JoinEvent event) throws Exception {
+        // We only care when the BOT itself joins (not other users)
+        if (event.getUser().getNick().equals(event.getBot().getNick())) {
+            // Update the tracking variable with the current channel name
+            this.lastChannelJoined = event.getChannel().getName(); 
+        }
+        Irc.canalativo = this.lastChannelJoined;
+        chatArea.append("\n\n\n");
+        String timestamp = Instant.now().toString();
+        chatArea.append(timestamp);
+        chatArea.append("\nNow logged in channel " + this.lastChannelJoined + "\n\n");
+    }
+
+    // 3. New method to retrieve the value
+    public String getLastChannelJoined() {
+        return this.lastChannelJoined;
+    }
+    
+    @Override
     public void onNotice(NoticeEvent event) {
-        String sender = event.getUser().getNick();
+        String sender;
+        if (event.getUser() != null) {
+            sender = event.getUser().getNick();
+        } else {
+            sender = event.getUserHostmask().getNick();
+        }
         String noticeMessage = event.getMessage();
-
         System.out.println(String.format("--- NOTICE from %s: %s ---", sender, noticeMessage));
-
+        //if (noticeMessage.contains("Channel")) {
+        // The message structure is often "Channel: #channelname topics"
+        // You may need to refine this parsing depending on the server
+        // Use SwingUtilities.invokeLater to update the GUI
+        //SwingUtilities.invokeLater(() -> {
+        //    chatArea.append("\nChannel: " + noticeMessage);
+        //});
+        //}
         // Listen for NickServ's failure notices
         if (sender.equalsIgnoreCase("NickServ") && noticeMessage.contains("not a registered nickname")) {
             System.out.println("Nickname not registered. Registering with NickServ now...");
-            event.getBot().sendIRC().message("NickServ", "REGISTER " + password + " " + email);
+            Irc.nextCommand = Irc.MODE_WAITING_FOR_EMAIL;
+
+            // 2. Prompt the user on the JTextArea (on the EDT)
+            SwingUtilities.invokeLater(() -> {
+                chatArea.append("\n[NickServ] Your nickname is not registered. \n");
+                chatArea.append("[NickServ] Please type your email address in the command box to register.\n");
+                txtCommand.setText("Email: ");
+            });
+        }
+    }
+
+    @Override
+    public void onDisconnect(DisconnectEvent event) {
+        System.out.println("Disconnected from IRC server.");
+        chatArea.append("\nDisconnected from IRC server. \n");
+    }
+
+    @Override
+    public void onServerResponse(ServerResponseEvent event) {
+        if (event.getCode() == 322) {
+            String rawMessage = event.getRawLine();
+            // The raw message will be something like:
+            // ":server.name 322 YourNick #channel users :Topic"
+            // Split the raw line by spaces to isolate the channel name and topic
+            String[] parts = rawMessage.split(" ", 6); // Split into 6 parts
+
+            // Basic parsing (indices may need adjustment based on exact server output):
+            // parts[3] should be the channel name (e.g., "#channel")
+            // parts[4] should be the user count (e.g., "1")
+            // parts[5] should contain the topic (after the colon)
+            if (parts.length >= 6) {
+                String userOnline = parts[2];
+                String channelName = parts[3];
+                String userCount = parts[4];
+                // Remove the leading colon from the topic text
+                String topic = parts[5].startsWith(":") ? parts[5].substring(1) : parts[5];
+
+                String formattedEntry = String.format("Canal: %s (%s usuarios) - Topico: %s",
+                        channelName, userCount, topic);
+                SwingUtilities.invokeLater(() -> {
+                    channelsArea.append(formattedEntry + "\n");
+                });
+            }
+        }else{
+            chatArea.append("\nServer response: " + event.getCode() + " - " + event.getParsedResponse());
+            System.out.println("\nServer response: " + event.getCode() + " - " + event.getParsedResponse());
+        }
+    }
+    
+@Override
+    public void onPart(PartEvent event) throws Exception {
+        
+        String userNick = event.getUser().getNick();
+        
+        String channelName = event.getChannel().getName();
+        
+        String partReason = event.getReason();
+
+        if (userNick.equals(event.getBot().getNick())) {
+            Irc.canalativo="";
+            chatArea.append("Bot has left channel: " + channelName);
+        } else {
+            Irc.canalativo="";
+            chatArea.append(userNick + " has parted " + channelName + ". Reason: " + partReason);
         }
     }
     
     @Override
+    public void onPrivateMessage(PrivateMessageEvent event) throws Exception {
+        String senderNick = event.getUser().getNick();
+        String messageContent = event.getMessage();
+        chatArea.append("\n<<PRIVATE MESSAGE FROM " + senderNick + ">>: " + messageContent);
+}
+
+    @Override
     public void onMessage(MessageEvent event) throws Exception {
-        String channel = event.getChannel().getName();
-        String user = event.getUser().getNick();
+        String user;
+        if (event.getUser() != null) {
+            user = event.getUser().getNick();
+        } else {
+            user = event.getUserHostmask().getNick();
+        }
         String message = event.getMessage();
         String timestamp = Instant.now().toString();
+        chatArea.append("\n");
+        chatArea.append(String.format("%s - %s: %s", timestamp,user, message));
 
-        System.out.println(String.format("[%s] %s: %s", channel, user, message));
-
-        // Create the item to be stored in DynamoDB
-        Map<String, AttributeValue> item = new HashMap<>();
-        item.put("ChannelName", AttributeValue.builder().s(channel).build());
-        item.put("Timestamp", AttributeValue.builder().s(timestamp).build());
-        item.put("Username", AttributeValue.builder().s(user).build());
-        item.put("MessageContent", AttributeValue.builder().s(message).build());
-
-        // Create the PutItem request
-        PutItemRequest putItemRequest = PutItemRequest.builder()
-                .tableName(DYNAMODB_TABLE_NAME)
-                .item(item)
-                .build();
-
-        // Asynchronously put the item to DynamoDB to avoid blocking the IRC thread
-        new Thread(() -> {
-            try {
-                ddbClient.putItem(putItemRequest);
-                System.out.println("Successfully stored message to DynamoDB.");
-            } catch (Exception e) {
-                System.err.println("Error storing message to DynamoDB: " + e.getMessage());
-            }
-        }).start();
     }
-    
+
 }
